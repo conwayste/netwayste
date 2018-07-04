@@ -328,8 +328,7 @@ fn print_help() {
     println!("...or just type text to chat!");
 }
 
-//////////////////// Main /////////////////////
-fn main() {
+pub fn start_client_networking() {
     drop(env_logger::init());
 
     let addr = env::args().nth(1).unwrap_or("127.0.0.1:12345".to_owned());
@@ -435,6 +434,11 @@ fn main() {
         read_stdin(stdin_tx);
     });
     drop(core.run(combined_fut).unwrap());
+}
+
+//////////////////// Main /////////////////////
+fn main() {
+    start_client_networking();
 }
 
 // Our helper method which will read data from stdin and send it along the
