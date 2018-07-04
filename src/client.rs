@@ -8,6 +8,7 @@ use std::iter;
 use std::net::SocketAddr;
 use std::process::exit;
 use std::str::FromStr;
+use std::sync;
 use std::thread;
 use std::time::Duration;
 use tokio_core::reactor::{Core, Timeout};
@@ -21,6 +22,7 @@ const CLIENT_VERSION_STR: &str = "0.0.1";
 
 struct ClientState {
     version:          Result<Version, SemVerError>,
+    conwayste_tx:     sync::mpsc::Sender<Packet>,
     sequence:         u64,   // sequence number of requests
     response_ack:     Option<u64>,  // last acknowledged response sequence number from server
     last_req_action:  Option<RequestAction>,   // last one we sent to server TODO: this is wrong;
@@ -33,9 +35,10 @@ struct ClientState {
 
 impl ClientState {
 
-    fn new() -> Self {
+    fn new(conwayste_tx: sync::mpsc::Sender<Packet>) -> Self {
         ClientState {
             version:         Version::parse(CLIENT_VERSION_STR),
+            conwayste_tx:    conwayste_tx,
             sequence:        0,
             response_ack:    None,
             last_req_action: None,
@@ -69,6 +72,9 @@ impl ClientState {
         // All `None` packets should get filtered out up the hierarchy
         let packet = opt_packet.unwrap();
         println!("DEBUG: Got packet from server {:?}: {:?}", addr, packet);
+
+        let _ = self.conwayste_tx.send(packet.clone());
+
         match packet {
             Packet::Response{sequence: _, request_ack: _, code} => {
                 // XXX sequence
@@ -213,7 +219,7 @@ impl ClientState {
                 for chat_message in chat_messages {
                     let chat_seq = chat_message.chat_seq.unwrap();
                     self.chat_msg_seq_num = cmp::max(chat_seq, self.chat_msg_seq_num);
-
+/*
                     match self.name.as_ref() {
                         Some(ref client_name) => {
                             if *client_name != &chat_message.player_name {
@@ -222,7 +228,7 @@ impl ClientState {
                         }
                         None => { panic!("Client name not set!"); }
                     }
-
+*/
                 }
             }
             None => {}
@@ -325,7 +331,7 @@ fn print_help() {
     println!("...or just type text to chat!");
 }
 
-pub fn start_client_networking() {
+pub fn start_client_networking(conwayste_tx: sync::mpsc::Sender<Packet>) {
     drop(env_logger::init());
 
     let addr = env::args().nth(1).unwrap_or("127.0.0.1:12345".to_owned());
@@ -355,7 +361,7 @@ pub fn start_client_networking() {
     println!("Accepting commands to remote {:?} from local {:?}.\nType /help for more info...", addr, local_addr);
 
     // initialize state
-    let initial_client_state = ClientState::new();
+    let initial_client_state = ClientState::new(conwayste_tx);
 
     let iter_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () )); // just a Stream that emits () forever
     // .and_then is like .map except that it processes returned Futures

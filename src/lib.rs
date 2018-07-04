@@ -4,7 +4,7 @@ extern crate serde_derive;
 extern crate log;
 extern crate env_logger;
 extern crate tokio_core;
-extern crate futures;
+pub extern crate futures;
 extern crate semver;
 
 pub mod net;
