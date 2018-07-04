@@ -1,13 +1,6 @@
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
-extern crate log;
-extern crate env_logger;
-extern crate tokio_core;
-extern crate futures;
+use net::{bind, RequestAction, ResponseCode, Packet, LineCodec, BroadcastChatMessage};
 
-mod net;
-
+use std::cmp;
 use std::env;
 use std::io::{self, Read, ErrorKind};
 use std::error::Error;
@@ -17,15 +10,17 @@ use std::process::exit;
 use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
-use net::{RequestAction, ResponseCode, Packet, LineCodec, BroadcastChatMessage};
 use tokio_core::reactor::{Core, Timeout};
 use futures::{Future, Sink, Stream, stream};
 use futures::future::ok;
 use futures::sync::mpsc;
+use env_logger;
+use semver::{Version, SemVerError};
 
-const CLIENT_VERSION: &str = "0.0.1";
+const CLIENT_VERSION_STR: &str = "0.0.1";
 
 struct ClientState {
+    version:          Result<Version, SemVerError>,
     sequence:         u64,   // sequence number of requests
     response_ack:     Option<u64>,  // last acknowledged response sequence number from server
     last_req_action:  Option<RequestAction>,   // last one we sent to server TODO: this is wrong;
@@ -40,6 +35,7 @@ impl ClientState {
 
     fn new() -> Self {
         ClientState {
+            version:         Version::parse(CLIENT_VERSION_STR),
             sequence:        0,
             response_ack:    None,
             last_req_action: None,
@@ -57,8 +53,10 @@ impl ClientState {
     // XXX Once netwayste integration is complete, we'll need to internally send
     // the result of most of these handlers so we can notify a player via UI event.
     
-    fn check_for_upgrade(&self, server_version: &String) {
-        let client_version = &net::VERSION.to_owned();
+    fn check_for_upgrade(&self, sversion: String) {
+        let client_version = self.version.clone().unwrap();
+        let server_version = Version::parse(sversion.as_str()).unwrap();
+
         if client_version < server_version {
             warn!("\tClient Version: {}\n\tServer Version: {}\nnWarning: Client out-of-date. Please upgrade.", client_version, server_version);
         }
@@ -182,8 +180,7 @@ impl ClientState {
 
     fn handle_logged_in(&mut self, cookie: String, server_version: String) {
         self.cookie = Some(cookie);
-
-        self.check_for_upgrade(&server_version);
+        self.check_for_upgrade(server_version);
     }
 
     fn handle_player_list(&mut self, player_names: Vec<String>) {
@@ -215,7 +212,7 @@ impl ClientState {
                 // 2) prints messages from other players
                 for chat_message in chat_messages {
                     let chat_seq = chat_message.chat_seq.unwrap();
-                    self.chat_msg_seq_num = std::cmp::max(chat_seq, self.chat_msg_seq_num);
+                    self.chat_msg_seq_num = cmp::max(chat_seq, self.chat_msg_seq_num);
 
                     match self.name.as_ref() {
                         Some(ref client_name) => {
@@ -243,9 +240,9 @@ impl ClientState {
                 if args.len() == 1 {
                     self.name = Some(args[0].clone());
                     println!("Set client name to {:?}", self.name.clone().unwrap());
-                    action = RequestAction::Connect{
+                    action = RequestAction::Connect {
                         name:           args[0].clone(),
-                        client_version: CLIENT_VERSION.to_owned(),
+                        client_version: CLIENT_VERSION_STR.to_string(),
                     };
                 } else { println!("ERROR: expected client name only"); }
             }
@@ -347,7 +344,7 @@ pub fn start_client_networking() {
     let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
 
     // Unwrap ok because bind will abort if unsuccessful
-    let udp = net::bind(&handle, Some("0.0.0.0"), Some(0)).unwrap();
+    let udp = bind(&handle, Some("0.0.0.0"), Some(0)).unwrap();
     let local_addr = udp.local_addr().unwrap();
 
     // Channels
@@ -434,11 +431,6 @@ pub fn start_client_networking() {
         read_stdin(stdin_tx);
     });
     drop(core.run(combined_fut).unwrap());
-}
-
-//////////////////// Main /////////////////////
-fn main() {
-    start_client_networking();
 }
 
 // Our helper method which will read data from stdin and send it along the
@@ -528,7 +520,7 @@ mod test {
     fn handle_logged_in_verify_connection_cookie() {
         let mut client_state = ClientState::new();
         assert_eq!(client_state.cookie, None);
-        client_state.handle_logged_in("cookie monster".to_owned(), CLIENT_VERSION.to_owned());
+        client_state.handle_logged_in("cookie monster".to_owned(), CLIENT_VERSION_STR.to_owned());
         assert_eq!(client_state.cookie, Some("cookie monster".to_owned()));
     }
 

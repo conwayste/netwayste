@@ -7,13 +7,13 @@ authors = ["Aaron Miller <aaron.miller04@gmail.com>", "manghi <manghirs@gmail.co
 name = "netwayste"
 path = "src/lib.rs"
 
-[[bin]]
-name = "server"
-path = "src/server.rs"
+#[[bin]]
+#name = "server"
+#path = "src/server.rs"
 
-[[bin]]
-name = "client"
-path = "src/client.rs"
+#[[bin]]
+#name = "clientb"
+#path = "src/client_bin.rs"
 
 [dependencies]
 futures      = "0.1.17"
